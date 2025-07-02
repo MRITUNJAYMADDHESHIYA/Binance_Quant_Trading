@@ -1,0 +1,15 @@
+#### I want to know at which point(not about time or price) market stable and volatile
+1. I need bid and ask volume, for every 1m data(last 20 candle of bid and ask data)
+2.1 using some mean of previous 20 candles-> stable and volatile
+2.2 using soome machine learning method to find the stable and volatile market(AgglomerativeClustering, KMeans, e.t.c)
+
+
+
+#### Different method to find the volatile and stable market then I am able to find that 2.1 method is more accurate for this.
+3.if the current candle and previous candle is in volatile then next candle i am going to place an order.
+4.buy-> bid > ask , sell-> ask > bid (simple is best)
+
+
+###############
+5.I can change the tp and sl method depend on percentage related to account 
+6. Bot is working 100% correct and that's it I need more time for accuracy, more efficient, stable also.

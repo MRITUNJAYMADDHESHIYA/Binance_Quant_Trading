@@ -1,0 +1,4 @@
+imbalance = (Vbid - Vask) /(Vbid + Vask)
+Vbid = sumation(Vbid)
+Vask = sumation(Vbid)
+
