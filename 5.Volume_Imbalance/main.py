@@ -67,7 +67,7 @@ def calculate_indicators(df:pd.DataFrame, order_book: dict) -> pd.DataFrame:
         logger.error(f"Error calculating indicators: {e}")
         return df, 0.0
     
-######################################
+###################################### Strategy Logic ##########################################
 def get_imbalance_signal(imbalance: float) ->str:
     try:
         if imbalance > imbalance_threshold:
@@ -101,7 +101,7 @@ async def manage_position(exchange, current_price: float):
                     positions_to_remove.append(pos)
             else:
                 if current_price <= tp_price:
-                    logger.ifo("Taking profit for short position at {tp_price}")
+                    logger.info("Taking profit for short position at {tp_price}")
                     await exchange.create_market_buy_order(symbol, qty)
                     positions_to_remove.append(pos)
                 elif current_price >= sl_price:

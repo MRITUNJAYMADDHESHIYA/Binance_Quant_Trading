@@ -1,0 +1,5 @@
+Bullish -> bidt > fair Pricet + delta
+Bearish -> askt < fair pricet - delta
+
+fair price = (bid max + ask max) / 2
+delta = kupa * atr
