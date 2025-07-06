@@ -1,0 +1,14 @@
+Bullish = sweep volumet > k * Vavgt  
+Bearish = Sweep volumet < -k * Vavgt
+
+sweep volumet = (Vbidt - Vbidt-1) - (Vaskt - Vaskt-1)
+Vavgt = summation(Vbidt + Vaskt) / 2*n
+
+
+
+
+########## Model for Quant making you good
+I have to study about quant machine learning
+
+
+

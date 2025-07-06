@@ -27,5 +27,13 @@ websocket_url = 'wss://stream.binance.com/ws/alchusdt@depth10@100ms'
 
 
 open_positions = []
-async def fetch_data(exchange, symbol:str, timeframe:str, limit:int=100)->pd.Data:
-    
+async def fetch_data(exchange, symbol:str, timeframe:str, limit:int=100)->pd.DataFrame:
+    try:
+        ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        return df
+    except Exception as e:
+        logger.error(f"Error fetching data: {e}")
+        return pd.DataFrame() 
