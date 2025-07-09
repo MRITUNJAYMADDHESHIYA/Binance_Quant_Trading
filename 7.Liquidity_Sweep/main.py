@@ -42,7 +42,7 @@ async def fetch_data(exchange, symbol:str, timeframe:str, limit:int=100)->pd.Dat
     except Exception as e:
         logger.error(f"Error fetching data: {e}")
         return pd.DataFrame()
-    
+ 
 ##########################################
 async def fetch_order_book(exchange, symbol: str) -> dict:
     try:
