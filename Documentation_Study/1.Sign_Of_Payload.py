@@ -18,8 +18,8 @@ import hashlib
 import time
 import requests
 
-api_key = 'Xsbs4NqyjzYf4qTAQAqG68AbKN1yJw9wePUftd1VjITfWil404RbZEDxvrriCk33'
-api_secret = 'nHNnM7mhcTyslTQThZhD06neCyAahzi0nxW3RlreNpW7NiFj62hMusyLeiERvgmw'
+api_key = '***************'
+api_secret = '***************'
 
 # Binance REST API endpoint for placing an order
 base_url = 'https://api.binance.com'

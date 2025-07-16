@@ -170,8 +170,8 @@ async def main():
     try:
         exchange = ccxt.binance({
             'enableRateLimit': True,
-            'apiKey': 'Xsbs4NqyjzYf4qTAQAqG68AbKN1yJw9wePUftd1VjITfWil404RbZEDxvrriCk33',
-            'secret': 'nHNnM7mhcTyslTQThZhD06neCyAahzi0nxW3RlreNpW7NiFj62hMusyLeiERvgmw',
+            'apiKey': '*************',
+            'secret': '**************',
             'enableLeverage': True,
             'options': {
                 'adjustForTimeDifference': True  # ← THIS FIXES THE TIMESTAMP ERROR, then no error in system and server time difference
