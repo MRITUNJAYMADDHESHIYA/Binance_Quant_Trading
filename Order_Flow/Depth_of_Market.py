@@ -28,18 +28,25 @@ import numpy as np
 
 # Peaks_Valleys_VA, Index
 ##### This function tell you first level biggest volume
-def identify_big_position(data: pd.DataFrame)->pd.DataFrame:
-
+def identify_big_position(data: pd.DataFrame) -> pd.DataFrame:
     dom_cols = [x for x in data.columns if "DOM_" in x]
     if len(dom_cols) == 0:
         raise Exception("Dataframe passed has no DOM col.")
-    else:
-        dom_cols_ask = [x for x in data.columns if "AskDOM_" in x] + ["AskSize"]
-        dom_cols_bid = [x for x in data.columns if "BidDOM_" in x] + ["BidSize"]
 
-        data['Ask_Max'] = np.array()(data[dom_cols_ask].idxmax(axis=1))
-        data['Bid_Max'] = np.array()(data[dom_cols_bid].idxmax(axis=1))
+    dom_cols_ask = [x for x in data.columns if "AskDOM_" in x]
+    dom_cols_bid = [x for x in data.columns if "BidDOM_" in x]
+
+    if "AskSize" in data.columns:
+        dom_cols_ask.append("AskSize")
+    if "BidSize" in data.columns:
+        dom_cols_bid.append("BidSize")
+
+    data['Ask_Max'] = data[dom_cols_ask].idxmax(axis=1)
+    data['Bid_Max'] = data[dom_cols_bid].idxmax(axis=1)
+
     return data
+
+
 
 ###### Remove DOM columns for better performance
 def remove_DOM_columns(data: pd.DataFrame)->pd.DataFrame:
@@ -48,7 +55,7 @@ def remove_DOM_columns(data: pd.DataFrame)->pd.DataFrame:
 
 
 ###### Sum of first N level(i am consider only 5 level)
-def sum_first_n_DOM_levels(data: pd.DataFrame, l1_side_to_sum: str = "ask", l1_level_to_sum: int = 5)->pd.DataFrame:
+def sum_first_n_DOM_levels(data: pd.DataFrame, l1_side_to_sum: str = "ask", l1_level_to_sum: int = 5) -> pd.DataFrame:
     l1_side_to_sum = str(l1_side_to_sum).upper()
     dom_side = "AskDOM_" if l1_side_to_sum == "ASK" else "BidDOM_"
     dom_cols = [x for x in data.columns if dom_side in x]
@@ -58,16 +65,15 @@ def sum_first_n_DOM_levels(data: pd.DataFrame, l1_side_to_sum: str = "ask", l1_l
     else:
         dom_cols = dom_cols[:l1_level_to_sum]
 
-
-    if l1_level_to_sum == "ASK":
+    if l1_side_to_sum == "ASK":
         data["DOMSumAsk_" + str(l1_level_to_sum)] = data[dom_cols].sum(axis=1)
-    elif l1_level_to_sum == "BID":
+    elif l1_side_to_sum == "BID":
         data["DOMSumBid_" + str(l1_level_to_sum)] = data[dom_cols].sum(axis=1)
     else:
         raise Exception("No correct DOM side")
-    
 
     return data
+
 
 # Think of the DOM shape as describing:
 # Is the liquidity evenly spread across multiple levels?
