@@ -1,11 +1,13 @@
 from Depth_of_Market import identify_big_position, remove_DOM_columns, sum_first_n_DOM_levels, get_DOM_shape
 from Foot_Print import footprint_chart_on_price, plot_footprint_chart
+from Detecting_Regime_using_Price import directional_change_regime_profile
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
 df = pd.read_csv("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/Binance/Order_Flow/Data/2023_06_29.csv", sep=';')
+df1 = pd.read_csv("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/Binance/Order_Flow/Data/aggTrade1.csv", sep=',')
 #print(df)
 
 # # Print initial dataframe shape and columns
@@ -43,3 +45,4 @@ df = pd.read_csv("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/Binance/Order_F
 
 #print(df['Price'].unique())
 
+print(directional_change_regime_profile(df1, 0.001))
