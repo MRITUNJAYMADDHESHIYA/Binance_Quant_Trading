@@ -1,91 +1,10 @@
 import pandas as pd
 import numpy as np
-
-def directional_change_regime_profile(data, threshold):
-    prices = data['Price'].values
-    times = data.index.values
-
-    last_extreme = prices[0]
-    direction = None
-    dc_events = []
-
-    last_event_time = times[0]
-
-    for idx, (price, time) in enumerate(zip(prices, times)):
-        tmv = (price - last_extreme) / last_extreme
-        log_return = np.log(price / last_extreme)
-
-        if isinstance(time, np.datetime64):
-            time_delta = (time - last_event_time) / np.timedelta64(1, 's')
-        else:
-            time_delta = time - last_event_time
-
-        if time_delta == 0:
-            time_adjusted_return = np.nan
-        else:
-            time_adjusted_return = (tmv / time_delta) * threshold
-
-        if direction != 'up' and log_return >= threshold:
-            direction = 'up'
-            dc_events.append({
-                'Index': idx,
-                'Time': time,
-                'Price': price,
-                'Direction': 'up',
-                'LogReturn': log_return,
-                'TMV': tmv,
-                'Time_Delta': time_delta,
-                'Time_Adjusted_Return': time_adjusted_return
-            })
-            last_extreme = price
-            last_event_time = time
-
-        elif direction != 'down' and log_return <= -threshold:
-            direction = 'down'
-            dc_events.append({
-                'Index': idx,
-                'Time': time,
-                'Price': price,
-                'Direction': 'down',
-                'LogReturn': log_return,
-                'TMV': tmv,
-                'Time_Delta': time_delta,
-                'Time_Adjusted_Return': time_adjusted_return
-            })
-            last_extreme = price
-            last_event_time = time
-
-    dc_df = pd.DataFrame(dc_events)
-
-    # --- DC-Based Regime Profiling ---
-    if dc_df.empty:
-        return None, None
-
-    num_dc_events = len(dc_df)
-    avg_magnitude_dc = dc_df['LogReturn'].abs().mean()
-    avg_tmv = dc_df['TMV'].abs().mean()
-    avg_time_delta = dc_df['Time_Delta'].mean()
-    std_time_delta = dc_df['Time_Delta'].std()
-    avg_time_adjusted_return = dc_df['Time_Adjusted_Return'].abs().mean()
-
-    regime_profile = {
-        'Number_of_DC_Events': num_dc_events,
-        'Average_DC_Magnitude': avg_magnitude_dc,
-        'Average_TMV': avg_tmv,
-        'Average_DC_Duration': avg_time_delta,
-        'Std_DC_Duration': std_time_delta,
-        'Average_Time_Adjusted_Return': avg_time_adjusted_return
-    }
-
-    return dc_df, regime_profile
-
-
-
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 from pykalman import KalmanFilter
+import matplotlib.dates as mdates
+
 
 
 
@@ -229,34 +148,70 @@ class dc_calculator():
 
 
 
-	def generate_original_time_series_plot(self, title: str, x_axis_label: str, y_axis_label: str, output_plot_name = None):
-		"""
+	def generate_original_time_series_plot(self, title: str, x_axis_label: str, y_axis_label: str, output_plot_name=None):
+		if self.prices is None or self.time is None:
+			print('Prices or Time data not loaded.')
+			return
 
-		Method to plot out the original time series data with no event
-		annotation for visualization purpose. If output_plot_name is 
-		supplied, then it is assumed that the plot should be written to
-		file, and the corresponding plot .jpg file will be created.
+		print(f"Plotting {len(self.prices)} data points...")
 
-		"""
+		fig, ax = plt.subplots(figsize=(12, 5))
 
-		if self.prices is None:
-			print('Please load the time series data first before plotting the original time series data.')
-		else:
-			fig2, ax2 = plt.subplots()
-			ax2.ticklabel_format(style = 'plain', axis = 'y', useOffset = False)
-			for i in range(len(self.prices)):
-				ax2.plot(self.time[i : i + 2], self.prices[i : i + 2], color = 'black')
-			ax2.set_xlim(0, len(self.prices) - 1)
-			ax2.set_ylim(self.prices.min() * 0.9999, self.prices.max() * 1.0001)
-			ax2.set_title(title)
-			ax2.set_xlabel(x_axis_label)
-			ax2.set_ylabel(y_axis_label)
-			if output_plot_name is not None and isinstance(output_plot_name, str):
-				plt.savefig(output_plot_name + '.jpg')
-			else:
-				plt.show()
+		# Plotting with datetime-aware x-axis
+		ax.plot(self.time, self.prices, color='black', linewidth=1)
+
+		# Format x-axis ticks for datetime
+		ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+		ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d\n%H:%M:%S'))
+
+		fig.autofmt_xdate(rotation=45)  # Auto-rotate and format x-axis labels
+
+		ax.set_title(title)
+		ax.set_xlabel(x_axis_label)
+		ax.set_ylabel(y_axis_label)
+
+		ax.set_ylim(np.min(self.prices) * 0.9999, np.max(self.prices) * 1.0001)
+
+		if output_plot_name:
+			full_path = output_plot_name + '.jpg'
+			plt.savefig(full_path, bbox_inches='tight')
+			print(f"Plot saved as: {full_path}")
+
+		plt.show()
+		plt.close()
+		print("Original time series plot displayed.")
+
+
+
+
+	# def generate_original_time_series_plot(self, title: str, x_axis_label: str, y_axis_label: str, output_plot_name = None):
+	# 	"""
+
+	# 	Method to plot out the original time series data with no event
+	# 	annotation for visualization purpose. If output_plot_name is 
+	# 	supplied, then it is assumed that the plot should be written to
+	# 	file, and the corresponding plot .jpg file will be created.
+
+	# 	"""
+
+	# 	if self.prices is None:
+	# 		print('Please load the time series data first before plotting the original time series data.')
+	# 	else:
+	# 		fig2, ax2 = plt.subplots()
+	# 		ax2.ticklabel_format(style = 'plain', axis = 'y', useOffset = False)
+	# 		for i in range(len(self.prices)):
+	# 			ax2.plot(self.time[i : i + 2], self.prices[i : i + 2], color = 'black')
+	# 		ax2.set_xlim(0, len(self.prices) - 1)
+	# 		ax2.set_ylim(self.prices.min() * 0.9999, self.prices.max() * 1.0001)
+	# 		ax2.set_title(title)
+	# 		ax2.set_xlabel(x_axis_label)
+	# 		ax2.set_ylabel(y_axis_label)
+	# 		if output_plot_name is not None and isinstance(output_plot_name, str):
+	# 			plt.savefig(output_plot_name + '.jpg')
+	# 		else:
+	# 			plt.show()
 			
-			print("The original time series plot '" + title + "' has been generated.")
+	# 		print("The original time series plot '" + title + "' has been generated.")
 
 
 
@@ -377,25 +332,93 @@ class dc_calculator():
 
 
 
-if __name__ == '__main__':
-	calc = dc_calculator()
 
-	# Example use of the methods of the dc_calculator class object
-	calc.load_time_series_data_from_file('Truncated EURUSD-2023-09.csv', data_point_limit = 1000)
-	calc.generate_original_time_series_plot('EUR-USD September 2023 Time Series', 
-											'Time', 'EUR-USD', 
-											output_plot_name = 'EURUSD-2023-09 Time Series Plot'
-										   )
-	calc.compute_dc_variables()
-	calc.generate_indicator_space_plot('EUR-USD September 2023 Indicator Feature Space', 
-									   output_plot_name = 'EURUSD-2023-09 Indicator Feature Space Plot'
-									  )
-	calc.generate_event_data('EURUSD-2023-09 Event Data')
-	calc.generate_time_series_plot('Annotated EUR-USD September 2023 Time Series', 
-								    'Time', 'EUR-USD', 
-								    output_plot_name = 'Annotated EURUSD-2023-09 Plot'
-								   )
-	calc.generate_time_series_animation('Annotated EUR-USD September 2023 Time Series Animation', 
-								   		 'Time', 'EUR-USD', 
-								   		 output_gif_name = 'Annotated EURUSD-2023-09 Animation'
-								   		)
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+# Assuming dc_calculator is already defined above this code.
+
+if __name__ == '__main__':
+    df1 = pd.read_csv("C:/Users/Mritunjay Maddhesiya/OneDrive/Desktop/Binance/Order_Flow/Data/aggTrade1.csv")
+
+    calc = dc_calculator()
+    calc.prices = df1['Price'].values
+    print("Sample Prices Loaded:", calc.prices[:5])
+    df1['Time'] = df1['Time'].str.replace(' +0530 IST', '+05:30', regex=False)
+    df1['Time'] = pd.to_datetime(df1['Time'], format='%Y-%m-%d %H:%M:%S.%f%z')
+    calc.time = df1['Time'].dt.strftime('%H:%M:%S.%f').values  # String for matplotlib
+	# calc.time = df1['Time'].values
+    print("Sample Time Loaded:", calc.time[:5])
+
+    # # Generate plots step-by-step:
+    # print("\nPlotting Original Time Series...")
+    # calc.generate_original_time_series_plot(
+		
+    #     title='Price Time Series',
+    #     x_axis_label='Time',
+    #     y_axis_label='Price',
+    #     output_plot_name='Price_Time_Series_Plot'
+    # )
+
+    print("\nComputing Directional Change Variables...")
+    calc.compute_dc_variables(threshold=0.001)
+
+    # Print TMV and Events
+    print("\nDirectional Change TMV List (first 10):", calc.TMV_list[:10])
+    print("\nDirectional Change Event Types (first 10):", calc.events[:10])
+    print("\nDirectional Change Colors Used (first 10):", calc.colors[:10])
+
+    # print("\nPlotting Indicator Feature Space...")
+    # calc.generate_indicator_space_plot(
+    #     title='Indicator Feature Space',
+    #     output_plot_name='Indicator_Feature_Space_Plot'
+    # )
+
+    # print("\nExporting Event Data CSV...")
+    # calc.generate_event_data('Event_Data')
+
+    # print("\nPlotting Annotated Time Series...")
+    # calc.generate_time_series_plot(
+    #     title='Annotated Price Time Series',
+    #     x_axis_label='Time',
+    #     y_axis_label='Price',
+    #     output_plot_name='Annotated_Price_Time_Series_Plot'
+    # )
+
+    # print("\nGenerating Time Series Animation...")
+    # calc.generate_time_series_animation(
+    #     title='Annotated Price Time Series Animation',
+    #     x_axis_label='Time',
+    #     y_axis_label='Price',
+    #     fps=60,
+    #     output_gif_name='Annotated_Price_Time_Series_Animation'
+    # )
+
+    # print("\n✅ All processes completed.")
+
+
+	
+
+
+
+	# # #Example use of the methods of the dc_calculator class object
+	# calc.load_time_series_data_from_file('Truncated EURUSD-2023-09.csv', data_point_limit = 1000)
+	# calc.generate_original_time_series_plot('EUR-USD September 2023 Time Series', 
+	# 										'Time', 'EUR-USD', 
+	# 										output_plot_name = 'EURUSD-2023-09 Time Series Plot'
+	# 									   )
+	# calc.compute_dc_variables()
+	# calc.generate_indicator_space_plot('EUR-USD September 2023 Indicator Feature Space', 
+	# 								   output_plot_name = 'EURUSD-2023-09 Indicator Feature Space Plot'
+	# 								  )
+	# calc.generate_event_data('EURUSD-2023-09 Event Data')
+	# calc.generate_time_series_plot('Annotated EUR-USD September 2023 Time Series', 
+	# 							    'Time', 'EUR-USD', 
+	# 							    output_plot_name = 'Annotated EURUSD-2023-09 Plot'
+	# 							   )
+	# calc.generate_time_series_animation('Annotated EUR-USD September 2023 Time Series Animation', 
+	# 							   		 'Time', 'EUR-USD', 
+	# 							   		 output_gif_name = 'Annotated EURUSD-2023-09 Animation'
+	# 							   		)
