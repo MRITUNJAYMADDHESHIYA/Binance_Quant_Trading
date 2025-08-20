@@ -5,5 +5,6 @@ Working every day is a Fun.
 Let see more on it
 
 <h3 align="center">It's just a simple strategy on 1H Time frame on Binance</h3>
+
 ![Swing Profit](8.1_H_Sol_Strategy/Swing_Profit.png)
 
