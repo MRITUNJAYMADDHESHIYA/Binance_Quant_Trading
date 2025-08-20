@@ -1,240 +1,309 @@
-import pandas as pd
-import numpy as np
-import time
-import ccxt
-from binance.client import Client
-
-######################## Print method ################
+import asyncio
 import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from datetime import timezone, datetime, timedelta
+from typing import Dict, List
+
+import pandas as pd
+import ccxt.async_support as ccxt  #async version
+
+############################################################
+# SAFETY: set this to True to log orders instead of sending
+############################################################
+DRY_RUN = True  # flip to False only after paper testing
+
+############################################################
+# Config
+############################################################
+symbol_ccxt = "SOL/USDT"           # CCXT market symbol (USDT-M futures)
+timeframe = "1m"                   # candle timeframe
+per_change_threshold = 0.01         # percent change of previous candle
+max_position = 1                   # allow max concurrent positions
+leverage = 20                      # leverage
+poll_interval_sec = 3              # wait 3 seconds between each loop iteration when fetching new data and managing positions.
+quote_asset = "USDT"               #account currency
+risk_fraction = 0.03               # 3% of account per trade
+
+#########################################################################
+API_KEY = "$$$$$$$$$"
+API_SECRET = "$$$$$$$$$$$$$$"
+
+############################################################
+# Logging
+############################################################
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger("scalp")
+
+############################################################
+# State
+############################################################
+open_positions: List[Dict] = []  # tracked manually(entry_price, quantity, side, tp_price, sl_price)
+last_candle_ts = None            # timestamp of the last processed candle(doesn’t re-trade the same candle again and again)
+
+############################################################
+# Helpers
+############################################################
+
+def to_ist(ms: int) -> datetime:
+    # Convert ms timestamp to IST
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc) + timedelta(hours=5, minutes=30)
 
 
-################## Global variable ####################
-symbol   = 'SOLUSDT'
-interval = '1m'
-per_change_threshold = 0.01    #percentage change in 1H candle then next candle buy or sell
-client = Client('Xsbs4NqyjzYf4qTAQAqG68AbKN1yJw9wePUftd1VjITfWil404RbZEDxvrriCk33', 'nHNnM7mhcTyslTQThZhD06neCyAahzi0nxW3RlreNpW7NiFj62hMusyLeiERvgmw')
+def df_from_ohlcv(ohlcv: List[List]) -> pd.DataFrame:
+    # CCXT OHLCV: [timestamp, open, high, low, close, volume]
+    rows = []
+    for ts, o, h, l, c, v in ohlcv:
+        rows.append({
+            "timestamp": to_ist(ts),
+            "open": float(o),
+            "high": float(h),
+            "low": float(l),
+            "close": float(c),
+            "volume": float(v),
+            "ts": int(ts),
+        })
+    return pd.DataFrame(rows)
 
-######### Position ###########
-max_position = 1
 
-######################### Live updating function
-def fetch_data(symbol:str, interval: str):
+async def fetch_last_two_candles(exchange: ccxt.binance, symbol: str, timeframe: str) -> pd.DataFrame:
+    candles = await exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=2)
+    df = df_from_ohlcv(candles)
+    return df
+
+
+def previous_candle_change_pct(df: pd.DataFrame) -> float:
+    """Return percent change of the *previous* (closed) candle.
+    Expects the DataFrame to have 2 rows: [prev, latest]
+    """
+    if df.shape[0] < 2:
+        return 0.0
+    prev = df.iloc[-2]
+    change_pct = (prev["close"] - prev["open"]) * 100.0 / prev["open"]
+    return float(change_pct)
+
+
+def get_signal(change_pct: float) -> str:
+    if change_pct > per_change_threshold:
+        return "bullish"
+    elif change_pct < -per_change_threshold:
+        return "bearish"
+    else:
+        return "neutral"
+
+
+async def ensure_leverage(exchange: ccxt.binance, symbol: str, lev: int):
     try:
-        candles = client.futures_klines(symbol=symbol, interval=interval, limit=2) #two candle return
-        latest = candles[-1] #last candle
-
-        
-        start_time = latest[0]
-        # Convert to IST
-        time_ist = pd.to_datetime(start_time, unit="ms") + pd.Timedelta(hours=5, minutes=30)
-
-        # Build row
-        df = pd.DataFrame([{
-            "timestamp": time_ist,
-            "open": float(latest[1]),
-            "high": float(latest[2]),
-            "low": float(latest[3]),
-            "close": float(latest[4]),
-            "volume": float(latest[5])
-        }])
-
-        print(f"Updated with new data for {time_ist}")
-        print(df.tail(5))
-        return df
+        await exchange.set_leverage(lev, symbol)
     except Exception as e:
-        print("Error during update:", e)
-        return df
-    
-
-# ###################################### Testing ################
-# if __name__ == "__main__":
-#     df = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-
-#     while True:
-#         df = fetch_data(symbol='SOLUSDT', interval='1m')
-#         time.sleep(5)   # check every 5 seconds (you can change this)
-
-##################### Indicators ####################
-def calculate_indicators(df:pd.DataFrame) -> pd.DataFrame:
-    try:
-        change_per = (df['close'] - df['open'])*100/df['open']
+        # Some exchanges require marketId; CCXT handles it internally for Binance futures
+        logger.warning(f"Could not set leverage via API (may already be set): {e}")
 
 
-        return change_per
-    except Exception as e:
-        logger.error(f"Error calculating indicators: {e}")
-        return change_per
-    
-##################### Strategy Logic ##########################################
-def get_signal(df:pd.DataFrame, change_per: float) -> str:
-    try:
-        if change_per > per_change_threshold:
-            return 'bullish'
-        elif change_per < per_change_threshold:
-            return 'bearish'
-        return 'neutral'
-    except Exception as e:
-        logger.error(f"Error getting signal: {e}")
-        return 'error in signal'
-    
+async def fetch_account_balance(exchange: ccxt.binance, asset: str) -> float:
+    bal = await exchange.fetch_balance()
+    # Prefer 'free' balance for sizing
+    wallets = bal.get(asset) or {}
+    if isinstance(wallets, dict):
+        free_amt = wallets.get('free') or wallets.get('total') or 0.0
+    else:
+        free_amt = 0.0
+    return float(free_amt)
 
-########################################## To-Do #########
-async def manage_position(exchange, current_price: float):
+
+async def place_market_order(exchange: ccxt.binance, symbol: str, side: str, amount: float):
+    if DRY_RUN:
+        logger.info(f"[DRY_RUN] create_order {side} {amount} {symbol}")
+        return {"id": "dry-run"}
+    order = await exchange.create_order(symbol=symbol, type="market", side=side, amount=amount)
+    return order
+
+
+################################################## Position Managment #####################################
+async def manage_positions(exchange: ccxt.binance, current_price: float):
     global open_positions
-    positions_to_remove = []
+    keep: List[Dict] = []
     try:
         for pos in open_positions:
-            entry_price = pos['entry_price']
-            qty = pos['quantity']
-            side = pos['side']
-            tp_price = pos['tp_price']
-            sl_price = pos['sl_price']
-            if side == 'long':
-                if current_price >= tp_price:
-                    logger.info(f"Taking profit for long position at {tp_price}")
-                    await exchange.create_market_sell_order(symbol, qty)
-                    positions_to_remove.append(pos)
-                elif current_price <= sl_price:
-                    logger.info(f"stop loss for long position at {sl_price}")
-                    await exchange.create_market_sell_order(symbol, qty)
-                    positions_to_remove.append(pos)
-            else:
-                if current_price <= tp_price:
-                    logger.info("Taking profit for short position at {tp_price}")
-                    await exchange.create_market_buy_order(symbol, qty)
-                    positions_to_remove.append(pos)
-                elif current_price >= sl_price:
-                    logger.info(f"Stop loss for short position at {sl_price}")
-                    await exchange.create_market_buy_order(symbol, qty)
-                    positions_to_remove.append(pos)
-        open_positions = [pos for pos in open_positions if pos not in positions_to_remove]
+            side =  pos["side"]
+            tp   =  pos["tp_price"]
+            sl   =  pos["sl_price"]
+            qty  =  pos["quantity"]
+            if side == "long":
+                if current_price >= tp:
+                    logger.info(f"TP hit for LONG at {tp:.4f}")
+                    await place_market_order(exchange, symbol_ccxt, "sell", qty)
+                    continue
+                if current_price <= sl:
+                    logger.info(f"SL hit for LONG at {sl:.4f}")
+                    await place_market_order(exchange, symbol_ccxt, "sell", qty)
+                    continue
+            else:  ############# short
+                if current_price <= tp:
+                    logger.info(f"TP hit for SHORT at {tp:.4f}")
+                    await place_market_order(exchange, symbol_ccxt, "buy", qty)
+                    continue
+                if current_price >= sl:
+                    logger.info(f"SL hit for SHORT at {sl:.4f}")
+                    await place_market_order(exchange, symbol_ccxt, "buy", qty)
+                    continue
+            keep.append(pos)
+        open_positions = keep
 
     except Exception as e:
         logger.error(f"Error managing positions: {e}")
-        return 
-    
+        return
 
-########################################## Order placed ########################
-async def execute_trade(exchange, signal: str, price: float, prev_candle: dict, account_balance: float):
-    try:
-        if len(open_positions) >= max_position:
-            logger.info("Max position limit reached, skipping trade execution.")
+
+################################################## Order Placed #############################################################
+async def execute_trade(exchange: ccxt.binance, signal: str, current_price: float, prev_candle: Dict, account_balance: float):
+    global open_positions
+    if len(open_positions) >= max_position:
+        logger.info("Max position limit reached; skipping new trade.")
+        return
+
+    # Risk sizing
+    risk_amount = account_balance * risk_fraction
+    candle_range = prev_candle["high"] - prev_candle["low"]
+    sl_offset = max(0.5 / 100.0 * candle_range, 0.0001)  # 0.5% of prev range, min tick safety
+
+    # Fetch market limits to respect min order size
+    mkt = exchange.market(symbol_ccxt)
+    amt_min = (mkt.get("limits", {}).get("amount", {}) or {}).get("min", 0.0) or 0.0
+    amt_step = (mkt.get("precision", {}) or {}).get("amount", None)
+
+    def _round_amount(a: float) -> float:
+        if amt_step is None:
+            return float(a)
+        # CCXT precision is decimal places, not step size
+        return float(round(a, int(amt_step)))
+
+    if signal == "bullish":
+        sl_price = current_price - sl_offset
+        tp_price = current_price * 1.015  # +1.5%
+        risk_per_unit = max(current_price - sl_price, 1e-9)
+        qty = max(risk_amount / risk_per_unit, 0.0)
+        qty = _round_amount(qty)
+        if qty <= 0 or qty < amt_min:
+            logger.warning("Position size below exchange minimum; skipping.")
             return
-
-        # Risk management: 3% of account
-        risk_amount = account_balance * 0.03  
-
-        # Previous candle size (High - Low)
-        candle_range = prev_candle["high"] - prev_candle["low"]
-        sl_offset = 0.005 * candle_range  # 0.5% of prev candle range
-
-        if signal == "bullish":
-            sl_price = price - sl_offset
-            tp_price = price * 1.015  # +1.5% target
-
-            # Position size (qty) based on risk
-            risk_per_unit = price - sl_price
-            qty = risk_amount / risk_per_unit if risk_per_unit > 0 else 0
-
-            if qty <= 0:
-                logger.warning("Invalid position size, skipping trade.")
-                return
-
-            order = await exchange.create_market_buy_order(symbol, qty)
-            open_positions.append({
-                "entry_price": price,
-                "quantity": qty,
-                "side": "long",
-                "tp_price": tp_price,
-                "sl_price": sl_price
-            })
-            logger.info(f"Executed LONG at {price}, TP: {tp_price}, SL: {sl_price}, Qty: {qty}")
-
-        elif signal == "bearish":
-            sl_price = price + sl_offset
-            tp_price = price * 0.985  # -1.5% target
-
-            # Position size (qty) based on risk
-            risk_per_unit = sl_price - price
-            qty = risk_amount / risk_per_unit if risk_per_unit > 0 else 0
-
-            if qty <= 0:
-                logger.warning("Invalid position size, skipping trade.")
-                return
-
-            order = await exchange.create_market_sell_order(symbol, qty)
-            open_positions.append({
-                "entry_price": price,
-                "quantity": qty,
-                "side": "short",
-                "tp_price": tp_price,
-                "sl_price": sl_price
-            })
-            logger.info(f"Executed SHORT at {price}, TP: {tp_price}, SL: {sl_price}, Qty: {qty}")
-
-    except Exception as e:
-        logger.error(f"Error executing trade: {e}")
-
-
-######################### main ###################
-leverage = 20
-
-async def main():
-    try:
-        exchange = ccxt.binance({
-            'enableRateLimit': True,
-            'apiKey': 'Xsbs4NqyjzYf4qTAQAqG68AbKN1yJw9wePUftd1VjITfWil404RbZEDxvrriCk33',
-            'secret': 'nHNnM7mhcTyslTQThZhD06neCyAahzi0nxW3RlreNpW7NiFj62hMusyLeiERvgmw',
-            'enableLeverage': True,
-            'options': {
-                'adjustForTimeDifference': True  # ← THIS FIXES THE TIMESTAMP ERROR, then no error in system and server time difference
-            }
+        await place_market_order(exchange, symbol_ccxt, "buy", qty)
+        open_positions.append({
+            "entry_price": current_price,
+            "quantity": qty,
+            "side": "long",
+            "tp_price": tp_price,
+            "sl_price": sl_price,
         })
+        logger.info(f"Opened LONG qty={qty} @ {current_price:.4f} TP={tp_price:.4f} SL={sl_price:.4f}")
+
+    elif signal == "bearish":
+        sl_price = current_price + sl_offset
+        tp_price = current_price * 0.985  # -1.5%
+        risk_per_unit = max(sl_price - current_price, 1e-9)
+        qty = max(risk_amount / risk_per_unit, 0.0)
+        qty = _round_amount(qty)
+        if qty <= 0 or qty < amt_min:
+            logger.warning("Position size below exchange minimum; skipping.")
+            return
+        await place_market_order(exchange, symbol_ccxt, "sell", qty)
+        open_positions.append({
+            "entry_price": current_price,
+            "quantity": qty,
+            "side": "short",
+            "tp_price": tp_price,
+            "sl_price": sl_price,
+        })
+        logger.info(f"Opened SHORT qty={qty} @ {current_price:.4f} TP={tp_price:.4f} SL={sl_price:.4f}")
+
+
+################################## Main function #####################################################
+async def main():
+    global last_candle_ts
+
+    exchange = ccxt.binance({
+        "apiKey": API_KEY,
+        "secret": API_SECRET,
+        "enableRateLimit": True,
+        "options": {
+            "defaultType": "future",              # use USDT-M futures
+            "adjustForTimeDifference": True,
+        },
+    })
+
+    try:
         await exchange.load_markets()
-        await exchange.set_leverage(leverage, symbol)
-        # async with websockets.connect(websocket_url) as ws:
-        #     logger.info("WebSocket connection established.")     #correct
-            
+        await ensure_leverage(exchange, symbol_ccxt, leverage)
+        logger.info("Starting loop… (IST timezone for prints)")
+
+############################################# Data ###########################################
         while True:
-            df = await fetch_data(exchange, symbol)
-            print(f"Fetched data: {df.tail()}")########## for debugging
-            if df.empty:
-                logger.warning("No data fetched, retrying...")
+            try:
+                df = await fetch_last_two_candles(exchange, symbol_ccxt, timeframe)
+                print(df.tail(5)) ### see the result
+            except Exception as e:
+                logger.error(f"Failed to fetch candles: {e}")
+                await asyncio.sleep(poll_interval_sec)
                 continue
-            
-           
-    
-            change_per = calculate_indicators(df)
-            print(f"Calculated indicators: {df.tail()}")########## for debugging
-            
-            if df.empty:
-                logger.warning("No data after calculating indicators, retrying...")
+
+            if df.empty or df.shape[0] < 2:
+                await asyncio.sleep(poll_interval_sec)
                 continue
-            
-            current_price = df['close'].iloc[-1]
-            signal = get_signal(df, change_per)
-        
-            
-            if signal != 'neutral':
-                await execute_trade(exchange, signal, current_price,)
-            
-            await manage_position(exchange, current_price)
-            
-            await asyncio.sleep(check_interval)
+
+###################### Only process when a *new* last candle appears #################################
+            latest = df.iloc[-1] #latest candle
+            prev = df.iloc[-2]   #pre candle
+            if last_candle_ts is not None and latest["ts"] == last_candle_ts: #price is in same candle
+                # No new candle yet; just manage open positions on latest price
+                await manage_positions(exchange, float(latest["close"]))
+                await asyncio.sleep(poll_interval_sec)
+                continue
+
+            last_candle_ts = latest["ts"] # Update last_candle_ts with the new candle’s timestamp.
+
+######################### Some Basic Information #####################################################
+            change_pct = previous_candle_change_pct(df)
+            print(f"%Change in prev_candle:", change_pct)
+            signal = get_signal(change_pct)
+            print(signal)
+            current_price = float(latest["close"])  # we act at the start of the new candle using latest close
+            logger.info(
+                f"Prev_candle Δ%={change_pct:.3f} | signal={signal} | time(prev)={prev['timestamp']} | time(latest)={latest['timestamp']}"
+            )
+
+########################## Balance for sizing ###########################################################
+            try:
+                bal = await fetch_account_balance(exchange, quote_asset)
+                print(f"Balance in you account: " , bal)
+            except Exception as e:
+                logger.error(f"Could not fetch balance: {e}")
+                bal = 0.0
+
+
+######################## Due to 0 Balance, Not execute trades(I am working on it)########################
+            if signal != "neutral" and bal > 0:
+                if len(open_positions) == 0:
+                    await execute_trade(exchange, signal, current_price, prev.to_dict(), bal)
+                else:
+                    logger.info("Position already open, skipping new trade")
+
+            # Post-trade risk management on each loop
+            await manage_positions(exchange, current_price)
+
+            await asyncio.sleep(poll_interval_sec)
+
     except Exception as e:
-        logger.error(f"Error in main loop: {e}")
+        logger.exception(f"Fatal error: {e}")
     finally:
         await exchange.close()
 
-# Run the event loop
+
 if __name__ == "__main__":
-    asyncio.run(main())
-    
-
-
-
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user. Exiting…")
 
 
 
