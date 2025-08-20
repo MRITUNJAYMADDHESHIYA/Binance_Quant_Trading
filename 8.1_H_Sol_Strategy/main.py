@@ -218,6 +218,7 @@ async def execute_trade(exchange: ccxt.binance, signal: str, current_price: floa
         logger.info(f"Opened SHORT qty={qty} @ {current_price:.4f} TP={tp_price:.4f} SL={sl_price:.4f}")
 
 
+
 ################################## Main function #####################################################
 async def main():
     global last_candle_ts
