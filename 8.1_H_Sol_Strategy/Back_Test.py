@@ -44,6 +44,7 @@ class StrategyConfig:
     risk_fraction: float = 0.5         # percent of account risked PER TRADE (e.g., 0.5 => 0.5%)
     tp_multiplier: float = 0.015       # +1.5% TP for long (and -1.5% for short)
     sl_prev_range_pct: float = 0.005   # 0.5% of previous candle range
+
     sl_min_tick: float = 0.0001
     max_position: int = 1
 
@@ -237,20 +238,33 @@ def backtest(df: pd.DataFrame,
 
             if signal != "neutral":
                 entry_price = float(cur.open)
-                # compute SL/TP from prev candle range
-                prev_range = float(prev.high) - float(prev.low)
-                sl_offset = max(strat.sl_prev_range_pct * prev_range, strat.sl_min_tick)
+                # # compute SL/TP from prev candle range
+                # prev_range = float(prev.high) - float(prev.low)
+                # sl_offset = max(strat.sl_prev_range_pct * prev_range, strat.sl_min_tick)
 
+                # if signal == "bullish":
+                #     sl = entry_price - sl_offset
+                #     tp = entry_price * (1 + strat.tp_multiplier)
+                #     side = "long"
+                #     raw_side = "buy"
+                # else:
+                #     sl = entry_price + sl_offset
+                #     tp = entry_price * (1 - strat.tp_multiplier)
+                #     side = "short"
+                #     raw_side = "sell"
+
+##########################################################################################
                 if signal == "bullish":
-                    sl = entry_price - sl_offset
-                    tp = entry_price * (1 + strat.tp_multiplier)
+                    sl = entry_price * (1 - strat.sl_prev_range_pct)   # 0.5% below entry
+                    tp = entry_price * (1 + strat.tp_multiplier)       # 1.5% above entry
                     side = "long"
                     raw_side = "buy"
                 else:
-                    sl = entry_price + sl_offset
-                    tp = entry_price * (1 - strat.tp_multiplier)
+                    sl = entry_price * (1 + strat.sl_prev_range_pct)   # 0.5% above entry
+                    tp = entry_price * (1 - strat.tp_multiplier)       # 1.5% below entry
                     side = "short"
                     raw_side = "sell"
+
 
                 # Risk sizing
                 risk_amount = balance * (strat.risk_fraction / 100.0)
@@ -343,6 +357,56 @@ def backtest(df: pd.DataFrame,
         "trades": tr,
     }
 
+
+
+import mplfinance as mpf
+import numpy as np
+
+def plot_trades(df: pd.DataFrame, trades: pd.DataFrame, symbol: str):
+    """
+    Plot candlesticks with trade markers.
+    - Green UP arrow for LONG entries
+    - Red DOWN arrow for SHORT entries
+    - Black 'x' for exits
+    """
+    # Prepare OHLC for mplfinance
+    df_plot = df.set_index("timestamp")[["open","high","low","close","volume"]]
+
+    # Initialize marker Series
+    long_marker = pd.Series(np.nan, index=df_plot.index)
+    short_marker = pd.Series(np.nan, index=df_plot.index)
+    exit_marker = pd.Series(np.nan, index=df_plot.index)
+
+    # Place markers at trade points
+    for _, tr in trades.iterrows():
+        if tr["entry_time"] in long_marker.index:
+            if tr["side"] == "long":
+                long_marker.loc[tr["entry_time"]] = tr["entry"]
+            else:
+                short_marker.loc[tr["entry_time"]] = tr["entry"]
+        if tr["exit_time"] in exit_marker.index:
+            exit_marker.loc[tr["exit_time"]] = tr["exit"]
+
+    # Create addplot objects
+    apds = []
+    apds.append(mpf.make_addplot(long_marker, type="scatter", markersize=100, marker="^", color="g"))
+    apds.append(mpf.make_addplot(short_marker, type="scatter", markersize=100, marker="v", color="r"))
+    apds.append(mpf.make_addplot(exit_marker, type="scatter", markersize=80, marker="x", color="k"))
+
+    # Plot candles with trades
+    mpf.plot(df_plot,
+             type="candle",
+             style="yahoo",
+             addplot=apds,
+             title=f"{symbol} - Trades",
+             ylabel="Price",
+             ylabel_lower="Volume",
+             volume=True,
+             figratio=(16,8),
+             figscale=1.2)
+
+
+
 # ---------------------------- CLI wiring ----------------------------
 
 def main():
@@ -382,7 +446,13 @@ def main():
     print(f"\nSaved equity to: {eq_path}")
     print(f"Saved trades to: {tr_path}")
 
-    # ✅ Plot equity curve
+
+    # Plot candlesticks with trades
+    if not res["trades"].empty:
+        plot_trades(df, res["trades"], args.symbol)
+
+
+    #Plot equity curve
     eq = res["equity_curve"]
     if not eq.empty:
         plt.figure(figsize=(12,6))
