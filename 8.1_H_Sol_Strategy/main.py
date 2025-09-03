@@ -16,11 +16,11 @@ DRY_RUN = True  # flip to False only after paper testing
 ############################################################
 symbol_ccxt = "SOL/USDT"           # CCXT market symbol (USDT-M futures)
 timeframe = "1m"                   # candle timeframe
-per_change_threshold = 0.01         # percent change of previous candle
+per_change_threshold = 0.01        # percent change of previous candle
 max_position = 1                   # allow max concurrent positions
 leverage = 20                      # leverage
 poll_interval_sec = 3              # wait 3 seconds between each loop iteration when fetching new data and managing positions.
-quote_asset = "USDT"               #account currency
+quote_asset = "USDT"               # account currency
 risk_fraction = 0.03               # 3% of account per trade
 
 #########################################################################

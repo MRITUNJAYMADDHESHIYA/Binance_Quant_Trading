@@ -17,18 +17,15 @@ Strategy summary (mirrors your live bot defaults):
 Input data format (CSV):
 - Columns: timestamp, open, high, low, close, volume
 - timestamp may be ms since epoch or an ISO datetime string. Backtester keeps everything in naive UTC for simplicity.
-
-Outputs:
-- Printed summary stats and a CSV with equity curve & trades in /mnt/data (if running in a notebook)
-- Functions return dicts so you can import and reuse.
-
-Usage examples (CLI):
-  python scalp_backtest.py --csv path/to/SOLUSDT-1m.csv --symbol SOLUSDT \
-      --threshold 1.0 --risk-fraction 0.5 --leverage 20 --taker-fee 0.0005
-
-  python scalp_backtest.py --csv path.csv --touch-order pessimistic
-
 """
+
+
+# Normally, when you write a class, you have to manually define:
+# __init__ (constructor)
+# __repr__ (string representation)
+# __eq__ (comparison between objects)
+# With @dataclass, Python generates all of these automatically for you.
+
 import argparse
 import math
 from dataclasses import dataclass, asdict
@@ -180,11 +177,7 @@ def _pnl(entry: float, exit: float, qty: float, side: str) -> float:
         return (entry - exit) * qty
 
 
-def backtest(df: pd.DataFrame,
-             strat: StrategyConfig,
-             market: MarketConfig,
-             bt: BacktestConfig,
-             symbol: str = "SYMBOL") -> Dict:
+def backtest(df: pd.DataFrame, strat: StrategyConfig, market: MarketConfig, bt: BacktestConfig, symbol: str = "SYMBOL") -> Dict:
     """Run backtest on a 1m OHLCV DataFrame sorted by timestamp."""
     balance = bt.initial_balance
     equity_curve = []  # list of dicts
@@ -360,15 +353,8 @@ def backtest(df: pd.DataFrame,
 
 
 import mplfinance as mpf
-import numpy as np
 
 def plot_trades(df: pd.DataFrame, trades: pd.DataFrame, symbol: str):
-    """
-    Plot candlesticks with trade markers.
-    - Green UP arrow for LONG entries
-    - Red DOWN arrow for SHORT entries
-    - Black 'x' for exits
-    """
     # Prepare OHLC for mplfinance
     df_plot = df.set_index("timestamp")[["open","high","low","close","volume"]]
 
@@ -394,16 +380,7 @@ def plot_trades(df: pd.DataFrame, trades: pd.DataFrame, symbol: str):
     apds.append(mpf.make_addplot(exit_marker, type="scatter", markersize=80, marker="x", color="k"))
 
     # Plot candles with trades
-    mpf.plot(df_plot,
-             type="candle",
-             style="yahoo",
-             addplot=apds,
-             title=f"{symbol} - Trades",
-             ylabel="Price",
-             ylabel_lower="Volume",
-             volume=True,
-             figratio=(16,8),
-             figscale=1.2)
+    mpf.plot(df_plot, type="candle", style="yahoo", addplot=apds, title=f"{symbol} - Trades", ylabel="Price", ylabel_lower="Volume", volume=True, figratio=(16,8), figscale=1.2)
 
 
 

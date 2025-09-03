@@ -12,10 +12,10 @@ Close positions:
 
 2->
 Config.py：Account & multiplier information
-BinanceArb.py: Arbitrage bot for Binance
 Logger.py：Logger configuration
 detect_spread.py：Spread detection
 basis_trading.py：Open/Close positions
+BinanceArb.py: Arbitrage bot for Binance
 
 
 

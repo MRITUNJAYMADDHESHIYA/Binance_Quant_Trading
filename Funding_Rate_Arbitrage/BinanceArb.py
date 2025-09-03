@@ -126,17 +126,33 @@ class BinanceArbBot:
             self.logger.info('Spot %.4f %s COIN-M %.4f -> Price Difference: %.4f%%' % (float(spot_ask1), operator, float(coin_bid1), r * 100))
 
             if r < self.threshold:
-                self.logger.info('Price difference Smaller than threshold >>> Retying....')
+                self.logger.info('Price difference Smaller than threshold >>> Retrying....')
             else:
                 self.logger.debug('Price difference Larger than threshold >>> Start to open position')
 
-                contract_num      = int(self.amount / self.multipler[self.coin])
-                contract_coin_num = contract_num * self.multiplier[self.coin]/float(coin_bid1)
-                contract_fee      = contract_coin_num * self.contract_fee_rate
-                spot_amount       = contract_coin_num / (1-self.spot_fee_rate) + contract_fee
-                self.logger.debug(f'Arbitrage starts >>> future contract num {contract_num} > coin-margin num {contract_coin_num} > fee {contract_fee} > spot amount {spot_amount}')
+                contract_num      = int(self.amount / self.multiplier[self.coin])
+                contract_coin_num = contract_num * self.multiplier[self.coin] / float(coin_bid1)
+                contract_fee      = contract_coin_num * self.future_fee_rate
+                spot_amount       = contract_coin_num / (1 - self.spot_fee_rate) + contract_fee
 
-                price = float(spot_ask1) * (1 + self.slippage)
-                params = {
-                    'symbol' : self.spot_symbol
-                }
+                self.logger.debug(
+                    f'Arbitrage starts >>> future contract num {contract_num} > '
+                    f'coin-margin num {contract_coin_num} > fee {contract_fee} > spot amount {spot_amount}'
+                )
+
+                # Place spot order (buy)
+                spot_price = float(spot_ask1) * (1 + self.slippage)
+                self.binanace_spot_place_order(
+                    symbol=self.spot_symbol['type2'],
+                    direction='long',
+                    price=spot_price,
+                    amount=spot_amount
+                )
+
+                # Place futures order (open short)
+                self.binance_future_place_order(
+                    symbol=self.future_symbol['type1'],
+                    direction='open_short',
+                    price=float(coin_bid1),
+                    amount=contract_num
+                )
