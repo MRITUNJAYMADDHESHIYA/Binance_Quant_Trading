@@ -1,7 +1,7 @@
 
 BINANCE_CONFIG = {
-    "apiKey": "Xsbs4NqyjzYf4qTAQAqG68AbKN1yJw9wePUftd1VjITfWil404RbZEDxvrriCk33",
-    "secret": "nHNnM7mhcTyslTQThZhD06neCyAahzi0nxW3RlreNpW7NiFj62hMusyLeiERvgmw",
+    "apiKey": "88888888888888888888",
+    "secret": "88888888888888888888888888888",
     "timeout": 3000,         # Timeout in ms for API requests (ccxt expects ms not sec)
     "rateLimit": 10,         # Minimum delay (ms) between requests
     "verbose": False,        # Enable debug logging

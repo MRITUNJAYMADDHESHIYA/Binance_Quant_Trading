@@ -1,6 +1,6 @@
 BINANCE_CONFIG = {
-    "api_key": "Xsbs4NqyjzYf4qTAQAqG68AbKN1yJw9wePUftd1VjITfWil404RbZEDxvrriCk33",
-    "api_secret": "nHNnM7mhcTyslTQThZhD06neCyAahzi0nxW3RlreNpW7NiFj62hMusyLeiERvgmw",
+    "api_key": "#############",
+    "api_secret": "#######################################",
     "timeput": 3000,  # Timeout in seconds for API requests
     "rate_limit": 10,  # Rate limit for API requests
     "verbose": False,  # Set to True for detailed logging
