@@ -12,6 +12,7 @@ BINANCE_CONFIG = {
 MULTIPLIER = {
     'BTC/USDT': 100,
     'ETH/USDT': 100,
+    'ETH/BTC': 100,
 }
 
 # Base settings
