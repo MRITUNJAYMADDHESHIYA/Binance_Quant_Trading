@@ -2,14 +2,13 @@ import asyncio
 import logging
 from datetime import timezone, datetime, timedelta
 from typing import Dict, List
-
 import pandas as pd
 import ccxt.async_support as ccxt  #async version
 
 ############################################################
 # SAFETY: set this to True to log orders instead of sending
 ############################################################
-DRY_RUN = True  # flip to False only after paper testing
+DRY_RUN = False  # flip to False only after paper testing
 
 ############################################################
 # Config
@@ -17,15 +16,15 @@ DRY_RUN = True  # flip to False only after paper testing
 symbol_ccxt = "SOL/USDT"           # CCXT market symbol (USDT-M futures)
 timeframe = "1m"                   # candle timeframe
 per_change_threshold = 0.01        # percent change of previous candle
-max_position = 1                   # allow max concurrent positions
+max_position = 5                   # allow max concurrent positions
 leverage = 20                      # leverage
 poll_interval_sec = 3              # wait 3 seconds between each loop iteration when fetching new data and managing positions.
 quote_asset = "USDT"               # account currency
 risk_fraction = 0.03               # 3% of account per trade
 
 #########################################################################
-API_KEY = "$$$$$$$$$"
-API_SECRET = "$$$$$$$$$$$$$$"
+API_KEY = "460d89474228b15172dc574d3e818625fc65a7253b7a4f3da75afb2af55a9d53"
+API_SECRET = "6d38c1a3b4b8fd0f78c602ec53b7a50dae34e80898866ac7f3ec2ee759fe3c34"
 
 ############################################################
 # Logging
@@ -103,13 +102,9 @@ async def ensure_leverage(exchange: ccxt.binance, symbol: str, lev: int):
 
 async def fetch_account_balance(exchange: ccxt.binance, asset: str) -> float:
     bal = await exchange.fetch_balance()
-    # Prefer 'free' balance for sizing
-    wallets = bal.get(asset) or {}
-    if isinstance(wallets, dict):
-        free_amt = wallets.get('free') or wallets.get('total') or 0.0
-    else:
-        free_amt = 0.0
-    return float(free_amt)
+    if asset in bal['total']:
+        return float(bal['total'][asset])
+    return 0.0
 
 
 async def place_market_order(exchange: ccxt.binance, symbol: str, side: str, amount: float):
@@ -180,11 +175,13 @@ async def execute_trade(exchange: ccxt.binance, signal: str, current_price: floa
         return float(round(a, int(amt_step)))
 
     if signal == "bullish":
-        sl_price = current_price - sl_offset
+        # sl_price = current_price - sl_offset
+        sl_price = current_price * 0.990   # wider SL (1% below entry)
         tp_price = current_price * 1.015  # +1.5%
         risk_per_unit = max(current_price - sl_price, 1e-9)
-        qty = max(risk_amount / risk_per_unit, 0.0)
-        qty = _round_amount(qty)
+        # qty = max(risk_amount / risk_per_unit, 0.0)
+        # qty = _round_amount(qty)
+        qty = 5
         if qty <= 0 or qty < amt_min:
             logger.warning("Position size below exchange minimum; skipping.")
             return
@@ -199,11 +196,13 @@ async def execute_trade(exchange: ccxt.binance, signal: str, current_price: floa
         logger.info(f"Opened LONG qty={qty} @ {current_price:.4f} TP={tp_price:.4f} SL={sl_price:.4f}")
 
     elif signal == "bearish":
-        sl_price = current_price + sl_offset
+        # sl_price = current_price + sl_offset
+        sl_price = current_price * 1.010   # wider SL (1% above entry)
         tp_price = current_price * 0.985  # -1.5%
         risk_per_unit = max(sl_price - current_price, 1e-9)
-        qty = max(risk_amount / risk_per_unit, 0.0)
-        qty = _round_amount(qty)
+        # qty = max(risk_amount / risk_per_unit, 0.0)
+        # qty = _round_amount(qty)
+        qty = 5
         if qty <= 0 or qty < amt_min:
             logger.warning("Position size below exchange minimum; skipping.")
             return
@@ -228,10 +227,18 @@ async def main():
         "secret": API_SECRET,
         "enableRateLimit": True,
         "options": {
-            "defaultType": "future",              # use USDT-M futures
+            "defaultType": "future",              #use USDT-M futures
             "adjustForTimeDifference": True,
         },
+        "urls": {
+            "api": {
+                "fapiPublic": "https://testnet.binancefuture.com/fapi/v1",
+                "fapiPrivate": "https://testnet.binancefuture.com/fapi/v1",
+            }
+        }
     })
+    exchange.set_sandbox_mode(True) #using testnet 
+
 
     try:
         await exchange.load_markets()
@@ -284,10 +291,9 @@ async def main():
 
 ######################## Due to 0 Balance, Not execute trades(I am working on it)########################
             if signal != "neutral" and bal > 0:
-                if len(open_positions) == 0:
+                while len(open_positions) < max_position:
                     await execute_trade(exchange, signal, current_price, prev.to_dict(), bal)
-                else:
-                    logger.info("Position already open, skipping new trade")
+                    await asyncio.sleep(1)  # slight delay between multiple entries
 
             # Post-trade risk management on each loop
             await manage_positions(exchange, current_price)
@@ -305,6 +311,8 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Interrupted by user. Exiting…")
+
+
 
 
 

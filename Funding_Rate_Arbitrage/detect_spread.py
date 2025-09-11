@@ -1,4 +1,5 @@
 # Spread detection
+# open_spread = spread when placing open position (future buy1 and spot sell1)
 import ccxt
 import pandas as pd
 import time
