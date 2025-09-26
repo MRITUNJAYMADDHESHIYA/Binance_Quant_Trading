@@ -1,0 +1,52 @@
+<!-- index.html -->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Parametric Superflower (p5.js)</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+    <style> body { margin:0; overflow:hidden; background:#0f0f10 } </style>
+  </head>
+  <body>
+    <script>
+      function superflower(theta, a, b, m, n1, n2, n3) {
+        let part1 = Math.pow(Math.abs(Math.cos(m * theta / 4) / a), n2);
+        let part2 = Math.pow(Math.abs(Math.sin(m * theta / 4) / b), n3);
+        let r = Math.pow(part1 + part2, -1.0 / n1);
+        r *= (1 + 0.18 * Math.sin(6 * theta));
+        return r;
+      }
+
+      function setup() {
+        createCanvas(windowWidth, windowHeight);
+        stroke(255, 190, 20);
+        strokeWeight(1.6);
+        noFill();
+      }
+
+      function draw() {
+        background(10);
+        translate(width/2, height/2);
+        let t = millis() / 1000;
+        let a = 1.0 + 0.35 * Math.sin(0.7 * t);
+        let b = 1.0 + 0.28 * Math.cos(0.9 * t + 1.0);
+        let m = 6 + 4 * Math.sin(0.5 * t);
+        let n1 = 0.3 + 0.45 * (1 + Math.sin(0.6 * t));
+        let n2 = 1.0 + 0.9 * Math.abs(Math.cos(0.4 * t));
+        let n3 = 1.2 + 0.6 * Math.abs(Math.sin(0.3 * t + 0.5));
+
+        beginShape();
+        for (let i=0;i<1000;i++){
+          let theta = map(i,0,1000,0,TWO_PI);
+          let r = superflower(theta, a, b, m, n1, n2, n3);
+          let x = r * 200 * Math.cos(theta);
+          let y = r * 200 * Math.sin(theta);
+          vertex(x, y);
+        }
+        endShape(CLOSE);
+      }
+
+      function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
+    </script>
+  </body>
+</html>
